@@ -530,7 +530,9 @@ the plan (the plan file when it is an absolute `.md` regular file within the
 2 MB cap, else the inline `plan`: the #1667 rule), then:
 1. no review open: starts `plannotator claude-mod-plan` (internal subcommand,
    `apps/hook/server/claude-mod-plan.ts`; stdin `{ plan, planFilePath,
-   revisionFile }`; the plan server with `planRevisions: true`) and answers
+   revisionFile, sessionId }`, `sessionId` pinning the plan's history chain to
+   this session so a resubmit after a shell `cd` continues it (#2197, see "Plan
+   Version History"); the plan server with `planRevisions: true`) and answers
    `{ deny }` with the waiting text (`waitingDenyText`). ExitPlanMode never runs,
    so plan mode stays on.
 2. a review open: writes `revision.json` `{ seq, plan }`; the subcommand polls it

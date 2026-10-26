@@ -98,7 +98,8 @@ describe('plan review', () => {
     expect(launch?.env?.PLANNOTATOR_SESSION_BRIDGE_TOKEN?.length).toBeGreaterThanOrEqual(32)
     const stdin = JSON.parse(host.files.get(`${launchDirOf(launch!)}/stdin`) ?? '{}')
     expect(stdin.plan).toBe(PLAN)
-    expect(stdin.projectRoot).toBe(host.root)
+    // #2197: the CLI pins the plan's history chain to this session.
+    expect(stdin.sessionId).toBe(SESSION.sessionId)
   })
 
   test('the plan file wins over a stale inline plan (#1667)', async () => {

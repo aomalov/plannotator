@@ -17,8 +17,12 @@ export interface ModPlanInput {
   planFilePath?: string;
   permissionMode?: string;
   revisionFile?: string;
-  /** The session's project root (`$.session.root()`), which a shell `cd` does not move */
-  projectRoot?: string;
+  /**
+   * The Claude Code session id: a resubmit of the same plan in this session
+   * continues its history chain wherever the shell has cd'd since (#2197).
+   * An older mod sends none (PLANNOTATOR_SESSION_TAG is then used).
+   */
+  sessionId?: string;
 }
 
 export function parseModPlanInput(raw: string): ModPlanInput | null {
@@ -37,7 +41,7 @@ export function parseModPlanInput(raw: string): ModPlanInput | null {
     planFilePath: text("planFilePath"),
     permissionMode: text("permissionMode"),
     revisionFile: text("revisionFile"),
-    projectRoot: text("projectRoot"),
+    ...(text("sessionId") ? { sessionId: text("sessionId") } : {}),
   };
 }
 

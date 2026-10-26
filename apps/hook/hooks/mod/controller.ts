@@ -1210,8 +1210,10 @@ export class PlannotatorMod {
     if (this.classicPlanReview) return { pass: true }
     const version = this.planVersion + 1
     const subject = subjectFor('plan', '', version)
-    const projectRoot = await this.host.sessionRoot().catch(() => undefined)
-    const stdin = (dir: string) => JSON.stringify({ plan, planFilePath, projectRoot, revisionFile: fileIn(dir, 'revision') })
+    // sessionId pins this plan's history chain to the session, so a resubmit
+    // after a shell cd continues it (#2197).
+    const stdin = (dir: string) =>
+      JSON.stringify({ plan, planFilePath, revisionFile: fileIn(dir, 'revision'), sessionId: this.session.sessionId })
     const started = await this.launch('plan', ['plannotator', 'claude-mod-plan'], subject, stdin, {
       version,
       revisionSeq: 0,

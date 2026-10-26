@@ -8,7 +8,7 @@
  */
 
 import { join, resolve, sep } from "path";
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from "fs";
+import { chmodSync, mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync, statSync, existsSync } from "fs";
 import { sanitizeTag } from "./project";
 import { resolveUserPath } from "./resolve-file";
 import { getPlannotatorDataDir } from "./data-dir";
@@ -198,25 +198,134 @@ export function getHistoryDir(project: string, slug: string): string {
   return historyDir;
 }
 
+/** At most this many plans pinned per session (the most recently saved kept). */
+export const PLAN_PIN_MAX_ENTRIES = 50;
+/** A session's pin file untouched this long is removed when any pin is written. */
+export const PLAN_PIN_FILE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const PLAN_PIN_HOST = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const PLAN_PIN_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const DATED_SLUG = /^(.+)-(\d{4}-\d{2}-\d{2})$/;
+
+interface PlanPin {
+  project: string;
+  /** Last save, epoch ms. */
+  at: number;
+}
+
+/** `plan-projects/<host>/<session id>.json`, or null when the tag could name another path. */
+function planPinFile(sessionTag: string): string | null {
+  const colon = sessionTag.indexOf(":");
+  if (colon <= 0) return null;
+  const host = sessionTag.slice(0, colon);
+  const id = sessionTag.slice(colon + 1);
+  if (!PLAN_PIN_HOST.test(host) || !PLAN_PIN_SESSION_ID.test(id) || id.includes("..")) return null;
+  return join(getPlannotatorDataDir(), "plan-projects", host, `${id}.json`);
+}
+
+/** One path segment, as `saveToHistory` uses a project name. */
+function isPathSegment(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 200 &&
+    value !== "." &&
+    value !== ".." &&
+    !/[/\\\0]/.test(value)
+  );
+}
+
+/** A session's pins; a missing, unreadable or corrupt file reads as none. */
+function readPlanPins(file: string): Record<string, PlanPin> {
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf-8")) as { v?: unknown; pins?: unknown };
+    if (!parsed || parsed.v !== 1 || !parsed.pins || typeof parsed.pins !== "object") return {};
+    const pins: Record<string, PlanPin> = {};
+    for (const [base, value] of Object.entries(parsed.pins as Record<string, unknown>)) {
+      const { project, at } = (value ?? {}) as Partial<PlanPin>;
+      if (isPathSegment(project) && typeof at === "number" && Number.isFinite(at)) pins[base] = { project, at };
+    }
+    return pins;
+  } catch {
+    return {};
+  }
+}
+
+/** Whether `project` holds a history chain of this plan (`{base}-YYYY-MM-DD` with versions). */
+function projectHasChain(project: string, base: string): boolean {
+  return listProjectPlans(project).some((plan) => {
+    const match = plan.slug.match(DATED_SLUG);
+    return match !== null && match[1] === base;
+  });
+}
+
+/** Write the pins whole (temp file, 0600, rename) and sweep stale session files. Never throws. */
+function writePlanPins(file: string, pins: Record<string, PlanPin>, now: number): void {
+  const temp = `${file}.${process.pid}.${now}.tmp`;
+  try {
+    const dir = join(file, "..");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const kept = Object.entries(pins)
+      .filter(([, pin]) => now - pin.at <= PLAN_HISTORY_CONTINUE_WINDOW_MS)
+      .sort(([, a], [, b]) => b.at - a.at)
+      .slice(0, PLAN_PIN_MAX_ENTRIES);
+    writeFileSync(temp, JSON.stringify({ v: 1, pins: Object.fromEntries(kept) }), { mode: 0o600 });
+    chmodSync(temp, 0o600);
+    renameSync(temp, file);
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (path === file) continue;
+      try {
+        if (now - statSync(path).mtimeMs > PLAN_PIN_FILE_TTL_MS) rmSync(path, { force: true });
+      } catch { /* gone already */ }
+    }
+  } catch {
+    try {
+      rmSync(temp, { force: true });
+    } catch { /* nothing to clean */ }
+  }
+}
+
 /**
- * The history project a session first saved this plan under, so later versions
- * stay in one history after the agent moves to another repo. Keyed by the
- * slug without its date, like the history chain. Records `detected` on first
- * use; without a session tag returns `detected` as is.
+ * The history project a plan of an agent session belongs to (#2197).
+ *
+ * `project` normally comes from the CLI's current folder, which a shell `cd`
+ * moves between submits; a session that cd's into another repository would
+ * then start a second chain for the same plan. So the project a session saved
+ * a plan under is pinned, keyed by (session, the slug without its date: the
+ * part `resolveHistorySlug` matches on), and a later submit of the same plan in
+ * the same session gets that project back while the pin is live: saved within
+ * PLAN_HISTORY_CONTINUE_WINDOW_MS (the window `resolveHistorySlug` gives an
+ * earlier chain) and the project still holds the chain. Otherwise `detected`
+ * (the current folder's project) is returned and recorded, so a first submit,
+ * another session and another plan behave exactly as without pins. Each call
+ * refreshes the pin.
+ *
+ * `sessionTag` is `<host>:<session id>`; one that could name another path is
+ * ignored, as is any failure to read or write the pin file
+ * (`<data dir>/plan-projects/<host>/<id>.json`, 0600, written whole, at most
+ * PLAN_PIN_MAX_ENTRIES plans, expired entries dropped, session files untouched
+ * for PLAN_PIN_FILE_TTL_MS removed). No tag: `detected`, nothing written.
  */
-export function pinPlanProject(sessionTag: string | undefined, slug: string, detected: string): string {
-  if (!sessionTag) return detected;
-  const dir = join(getPlannotatorDataDir(), "plan-projects", sessionTag.replace(/[^\w-]/g, "_"));
-  const file = join(dir, `${slug.replace(/-\d{4}-\d{2}-\d{2}$/, "")}.txt`);
-  try {
-    const pinned = readFileSync(file, "utf-8").trim();
-    if (pinned) return pinned;
-  } catch { /* first save of this plan in the session */ }
-  try {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(file, detected);
-  } catch { /* unpinned: history still saves under `detected` */ }
-  return detected;
+export function pinPlanProject(
+  sessionTag: string | undefined,
+  slug: string,
+  detected: string,
+  now: number = Date.now(),
+): string {
+  const file = sessionTag ? planPinFile(sessionTag) : null;
+  const base = slug.match(DATED_SLUG)?.[1];
+  if (!file || !base) return detected;
+  const pins = readPlanPins(file);
+  const pin = pins[base];
+  const live =
+    pin !== undefined &&
+    now - pin.at <= PLAN_HISTORY_CONTINUE_WINDOW_MS &&
+    pin.at <= now + 60_000 &&
+    projectHasChain(pin.project, base);
+  const project = live ? pin.project : detected;
+  if (isPathSegment(project)) writePlanPins(file, { ...pins, [base]: { project, at: now } }, now);
+  return project;
 }
 
 /**

@@ -120,9 +120,13 @@ export interface ServerOptions {
   customPlanPath?: string | null;
   /** The plan's file on disk as the harness reported it, trusted only when it holds `plan` */
   planFilePath?: string;
-  /** The session's project root; names the plan's history project instead of the process cwd */
-  projectRoot?: string;
-  /** The host session (`claude-code:<id>`); pins each plan's history project for that session */
+  /**
+   * The host session (`claude-code:<id>`). A later submit of the same plan
+   * (same date-free slug) in the same session continues the chain the session
+   * saved it to, wherever the shell has cd'd since (#2197; `pinPlanProject`).
+   * Without it, or with no live pin, the history project is the current
+   * folder's, as before.
+   */
   sessionTag?: string;
   /**
    * The host may push revised plans into this open review (`updatePlan`), as
@@ -294,7 +298,7 @@ export async function startPlannotatorServer(
 
   if (mode !== "archive") {
     repoInfo = await getRepoInfo();
-    project = pinPlanProject(options.sessionTag, slug, (await detectProjectName(options.projectRoot)) ?? "_unknown");
+    project = pinPlanProject(options.sessionTag, slug, (await detectProjectName()) ?? "_unknown");
     historySlug = resolveHistorySlug(project, slug);
     const historyResult = saveToHistory(project, historySlug, plan);
     currentPlanPath = historyResult.path;
@@ -895,6 +899,8 @@ export async function startPlannotatorServer(
       slug = generateSlug(next);
       historySlug = resolveHistorySlug(project, slug, { current: historySlug });
       const historyResult = saveToHistory(project, historySlug, next);
+      // Keep the session's pin fresh (and follow a renamed heading).
+      pinPlanProject(options.sessionTag, historySlug, project);
       currentPlanPath = historyResult.path;
       previousPlan = historyResult.version > 1 ? getPlanVersion(project, historySlug, historyResult.version - 1) : null;
       versionInfo = { version: historyResult.version, totalVersions: getVersionCount(project, historySlug), project };

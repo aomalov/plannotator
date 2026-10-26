@@ -236,7 +236,6 @@ function hostOf($: Engine, debugPath: string | null): Host {
       })()
     },
     sha256: async (text) => hexOf(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))),
-    sessionRoot: async () => $.session.root(),
   }
 }
 
