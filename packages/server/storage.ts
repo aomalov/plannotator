@@ -7,6 +7,7 @@ export {
   getHistoryDir,
   resolveHistorySlug,
   saveToHistory,
+  pinPlanProject,
   getPlanVersion,
   getPlanVersionPath,
   getVersionCount,

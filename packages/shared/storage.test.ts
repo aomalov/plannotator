@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 // Imported statically and BEFORE any PLANNOTATOR_DATA_DIR is set: this module's
 // import-time side effects used to freeze the data directory, so a later env
 // change was silently ignored while every other consumer resolved it live.
-import { getHistoryDir, saveToHistory } from "./storage";
+import { getHistoryDir, pinPlanProject, saveToHistory } from "./storage";
 
 import { createTestEnvironment } from "../../tests/helpers/environment";
 
@@ -34,5 +34,17 @@ describe("storage data directory", () => {
     const second = env.makeTempDir();
     process.env.PLANNOTATOR_DATA_DIR = second;
     expect(getHistoryDir("proj", "slug")).toBe(`${second}/history/proj/slug`);
+  });
+});
+
+describe("pinPlanProject", () => {
+  test("keeps a session's plan in the project it was first saved under", () => {
+    env.reset();
+    process.env.PLANNOTATOR_DATA_DIR = env.makeTempDir();
+
+    expect(pinPlanProject("claude-code:s1", "plan-x-2026-10-26", "meta-repo")).toBe("meta-repo");
+    expect(pinPlanProject("claude-code:s1", "plan-x-2026-10-27", "nested-repo")).toBe("meta-repo");
+    expect(pinPlanProject("claude-code:s2", "plan-x-2026-10-26", "nested-repo")).toBe("nested-repo");
+    expect(pinPlanProject(undefined, "plan-x-2026-10-26", "nested-repo")).toBe("nested-repo");
   });
 });

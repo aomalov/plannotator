@@ -128,11 +128,12 @@ describe("claude-mod-plan input", () => {
     expect(parseModPlanInput("{}")).toBeNull();
     expect(parseModPlanInput('{"plan":"  "}')).toBeNull();
     expect(parseModPlanInput("nope")).toBeNull();
-    expect(parseModPlanInput('{"plan":"# P","revisionFile":"/x/r.json"}')).toEqual({
+    expect(parseModPlanInput('{"plan":"# P","revisionFile":"/x/r.json","projectRoot":"/work/repo"}')).toEqual({
       plan: "# P",
       planFilePath: undefined,
       permissionMode: undefined,
       revisionFile: "/x/r.json",
+      projectRoot: "/work/repo",
     });
   });
 

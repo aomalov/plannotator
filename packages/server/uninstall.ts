@@ -108,6 +108,7 @@ const STALE_SHARED_SKILLS = [
 const PURGE_OWNED_TOP_LEVEL = [
   "plans",
   "history",
+  "plan-projects",
   "feedback",
   "inbox",
   "t3-code",

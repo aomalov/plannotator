@@ -30,6 +30,7 @@ export interface FakeHost extends Host {
   /** Run every timer once (one tick). */
   tick(): Promise<void>
   clock: number
+  root: string
 }
 
 export function fakeHost(): FakeHost {
@@ -46,6 +47,7 @@ export function fakeHost(): FakeHost {
     aborted: [],
     transcript: [],
     clock: 1_000_000,
+    root: '/work/project',
     onRun: () => undefined,
     onFetch: () => ({ status: 404, ok: false, text: '' }),
     onWait: () => undefined,
@@ -131,6 +133,7 @@ export function fakeHost(): FakeHost {
       for (const char of text) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
       return `h${hash.toString(16)}-${text.length}`
     },
+    sessionRoot: async () => host.root,
   }
   return host
 }

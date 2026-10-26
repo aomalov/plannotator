@@ -1210,7 +1210,8 @@ export class PlannotatorMod {
     if (this.classicPlanReview) return { pass: true }
     const version = this.planVersion + 1
     const subject = subjectFor('plan', '', version)
-    const stdin = (dir: string) => JSON.stringify({ plan, planFilePath, revisionFile: fileIn(dir, 'revision') })
+    const projectRoot = await this.host.sessionRoot().catch(() => undefined)
+    const stdin = (dir: string) => JSON.stringify({ plan, planFilePath, projectRoot, revisionFile: fileIn(dir, 'revision') })
     const started = await this.launch('plan', ['plannotator', 'claude-mod-plan'], subject, stdin, {
       version,
       revisionSeq: 0,

@@ -102,4 +102,6 @@ export interface Host {
   /** A line in the mod's debug log (PLANNOTATOR_MOD_DEBUG=1); a no-op otherwise. */
   debug(text: string): void
   sha256(text: string): Promise<string>
+  /** `$.session.root()`: the session's project root, which a shell `cd` does not move. */
+  sessionRoot(): Promise<string>
 }

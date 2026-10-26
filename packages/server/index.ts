@@ -37,6 +37,7 @@ import {
   saveAnnotations,
   saveFinalSnapshot,
   saveToHistory,
+  pinPlanProject,
   getPlanVersion,
   getPlanVersionPath,
   getVersionCount,
@@ -119,6 +120,10 @@ export interface ServerOptions {
   customPlanPath?: string | null;
   /** The plan's file on disk as the harness reported it, trusted only when it holds `plan` */
   planFilePath?: string;
+  /** The session's project root; names the plan's history project instead of the process cwd */
+  projectRoot?: string;
+  /** The host session (`claude-code:<id>`); pins each plan's history project for that session */
+  sessionTag?: string;
   /**
    * The host may push revised plans into this open review (`updatePlan`), as
    * Pi's non-blocking plan review does. Advertised to the tab as `planRevision`
@@ -289,7 +294,7 @@ export async function startPlannotatorServer(
 
   if (mode !== "archive") {
     repoInfo = await getRepoInfo();
-    project = (await detectProjectName()) ?? "_unknown";
+    project = pinPlanProject(options.sessionTag, slug, (await detectProjectName(options.projectRoot)) ?? "_unknown");
     historySlug = resolveHistorySlug(project, slug);
     const historyResult = saveToHistory(project, historySlug, plan);
     currentPlanPath = historyResult.path;

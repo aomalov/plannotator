@@ -199,6 +199,27 @@ export function getHistoryDir(project: string, slug: string): string {
 }
 
 /**
+ * The history project a session first saved this plan under, so later versions
+ * stay in one history after the agent moves to another repo. Keyed by the
+ * slug without its date, like the history chain. Records `detected` on first
+ * use; without a session tag returns `detected` as is.
+ */
+export function pinPlanProject(sessionTag: string | undefined, slug: string, detected: string): string {
+  if (!sessionTag) return detected;
+  const dir = join(getPlannotatorDataDir(), "plan-projects", sessionTag.replace(/[^\w-]/g, "_"));
+  const file = join(dir, `${slug.replace(/-\d{4}-\d{2}-\d{2}$/, "")}.txt`);
+  try {
+    const pinned = readFileSync(file, "utf-8").trim();
+    if (pinned) return pinned;
+  } catch { /* first save of this plan in the session */ }
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, detected);
+  } catch { /* unpinned: history still saves under `detected` */ }
+  return detected;
+}
+
+/**
  * Determine the next version number by scanning existing files.
  * Returns 1 if no versions exist, otherwise max + 1.
  */

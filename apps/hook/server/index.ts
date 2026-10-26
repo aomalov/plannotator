@@ -2771,13 +2771,15 @@ if (args[0] === "sessions") {
     process.exit(1);
   }
 
-  const planProject = (await detectProjectName()) ?? "_unknown";
+  const planProject = (await detectProjectName(input.projectRoot)) ?? "_unknown";
   let currentPlan = input.plan;
   setServerReadyTarget(input.planFilePath);
   const server = await startPlannotatorServer({
     plan: input.plan,
     origin: "claude-code",
     planFilePath: input.planFilePath,
+    projectRoot: input.projectRoot,
+    sessionTag: process.env.PLANNOTATOR_SESSION_TAG || undefined,
     permissionMode: input.permissionMode,
     planRevisions: true,
     // The mod delivers an approval's notes (planHostResult composes the
@@ -3054,7 +3056,9 @@ if (args[0] === "sessions") {
     process.exit(1);
   }
 
-  const planProject = (await detectProjectName()) ?? "_unknown";
+  const isClaudeCode = !isGemini && detectedOrigin === "claude-code";
+  const projectRoot = isClaudeCode ? process.env.CLAUDE_PROJECT_DIR || undefined : undefined;
+  const planProject = (await detectProjectName(projectRoot)) ?? "_unknown";
 
   // Start the plan review server
   const server = await startPlannotatorServer({
@@ -3065,6 +3069,8 @@ if (args[0] === "sessions") {
     // model, so notes sent with an approval would be lost.
     // Claude Code writes the plan to disk before the hook fires.
     planFilePath: isGemini ? undefined : event.tool_input?.planFilePath,
+    projectRoot,
+    sessionTag: isClaudeCode && event.session_id ? `claude-code:${event.session_id}` : undefined,
     permissionMode,
     sharingEnabled,
     shareBaseUrl,
